@@ -80,6 +80,37 @@ const flowerTools = [
   },
 ];
 
+// Helper to clean conversation history for Gemini API strict format
+// (Must start with 'user', alternate between 'user' and 'model', and end with 'model' so sendMessage adds the user turn)
+function cleanGeminiHistory(rawMessages: Array<{ role: string; content: string }>) {
+  const history: Array<{ role: "user" | "model"; parts: [{ text: string }] }> = [];
+  let foundFirstUser = false;
+  let lastRole: "user" | "model" | null = null;
+
+  for (const m of rawMessages || []) {
+    const role: "user" | "model" = (m.role === "assistant" || m.role === "model") ? "model" : "user";
+    if (!foundFirstUser) {
+      if (role === "user") {
+        foundFirstUser = true;
+        history.push({ role: "user", parts: [{ text: m.content }] });
+        lastRole = "user";
+      }
+      continue;
+    }
+    if (role !== lastRole) {
+      history.push({ role, parts: [{ text: m.content }] });
+      lastRole = role;
+    }
+  }
+
+  // If history ends with 'user', remove it so sendMessage(userMessage) does not cause two consecutive user turns
+  if (history.length > 0 && history[history.length - 1].role === "user") {
+    history.pop();
+  }
+
+  return history.slice(-10);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -101,11 +132,8 @@ export async function POST(req: Request) {
           "gemini-1.5-flash",
         ]));
 
-        // Build history
-        const chatHistory = (messages || []).slice(-8).map((m: { role: string; content: string }) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        }));
+        // Build valid history strictly conforming to Google Gemini specification
+        const chatHistory = cleanGeminiHistory(messages || []);
 
         let chat: any = null;
         let response: any = null;
@@ -113,6 +141,7 @@ export async function POST(req: Request) {
 
         for (const candidate of modelCandidates) {
           try {
+            // First attempt: with function declarations tools
             const model = genAI.getGenerativeModel({
               model: candidate,
               systemInstruction: SYSTEM_PROMPT,
@@ -129,9 +158,26 @@ export async function POST(req: Request) {
             activeModel = candidate;
             break;
           } catch (candErr: any) {
-            console.warn(`Attempt with Gemini model "${candidate}" failed:`, candErr?.message);
-            if (candidate === modelCandidates[modelCandidates.length - 1]) {
-              throw candErr;
+            console.warn(`Attempt with Gemini model "${candidate}" with tools failed:`, candErr?.message);
+            // Fallback attempt: without tools
+            try {
+              const modelNoTools = genAI.getGenerativeModel({
+                model: candidate,
+                systemInstruction: SYSTEM_PROMPT,
+              });
+              const currentChat = modelNoTools.startChat({
+                history: chatHistory,
+              });
+              const result = await currentChat.sendMessage(userMessage);
+              chat = currentChat;
+              response = result.response;
+              activeModel = candidate;
+              break;
+            } catch (noToolsErr: any) {
+              console.warn(`Attempt with Gemini model "${candidate}" without tools also failed:`, noToolsErr?.message);
+              if (candidate === modelCandidates[modelCandidates.length - 1]) {
+                throw noToolsErr;
+              }
             }
           }
         }
@@ -260,6 +306,10 @@ export async function POST(req: Request) {
         "3. Cọc trước 50% (Phổ biến nhất)\n" +
         "4. Trả đủ 100% qua quét mã VietQR tự động\n" +
         "5. Hoặc Ship COD / nhận hàng thanh toán tại shop ạ! ✨";
+    } else if (lower.includes("hôm nay") || lower.includes("ngày mấy") || lower.includes("mấy giờ")) {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      reply = `Dạ hôm nay là **${dateStr}** nè bạn ơi! 🌸 Tiệm hoa thủ công Anna Decor đang mở cửa uốn hoa kẽm nhung & hoa len từ 06:00 đến 21:00 nha. Bạn đang cần tìm mẫu hoa cho dịp nào cứ nhắn Bé Mầm tư vấn liền nhé! ✨💖`;
     } else {
       reply =
         "Dạ em Bé Mầm xin chào bạn ạ ~ 🌸 Tiệm hoa thủ công Anna Decor tụi em chuyên hoa kẽm nhung uốn tay, hoa móc len vintage và hoa sáp thơm vĩnh cửu. Bạn cần tìm hoa tặng bạn bè, sinh nhật, tặng crush hay tự tay bó hoa, cứ nhắn Bé Mầm hỗ trợ liền nha! 💖";
