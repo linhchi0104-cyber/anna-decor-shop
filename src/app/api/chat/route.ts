@@ -112,6 +112,7 @@ function cleanGeminiHistory(rawMessages: Array<{ role: string; content: string }
 }
 
 export async function POST(req: Request) {
+  let lastErrorDetail = "";
   try {
     const body = await req.json();
     const { messages, userMessage } = body;
@@ -270,7 +271,8 @@ export async function POST(req: Request) {
           model: activeModel,
         });
       } catch (geminiError: any) {
-        console.warn("Gemini API call failed, falling back to smart local rules:", geminiError?.message);
+        lastErrorDetail = geminiError?.message || String(geminiError);
+        console.warn("Gemini API call failed, falling back to smart local rules:", lastErrorDetail);
       }
     }
 
@@ -319,14 +321,16 @@ export async function POST(req: Request) {
       reply,
       content: reply,
       source: "local_rules",
+      errorDetail: lastErrorDetail || undefined,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Chat API error:", error);
     const fallbackText = "Dạ Bé Mầm xin chào bạn nha ~ 🌸 Tiệm hoa Anna Decor sẵn sàng tư vấn hoa kẽm nhung & hoa len cho bạn ạ!";
     return NextResponse.json({
       reply: fallbackText,
       content: fallbackText,
       source: "fallback",
+      errorDetail: error?.message || lastErrorDetail || undefined,
     });
   }
 }
