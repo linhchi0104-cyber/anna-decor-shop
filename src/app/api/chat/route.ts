@@ -82,8 +82,10 @@ const flowerTools = [
 
 export async function POST(req: Request) {
   try {
-    const { messages, userMessage } = await req.json();
-    const apiKey = getStoredGeminiApiKey() || process.env.GEMINI_API_KEY;
+    const body = await req.json();
+    const { messages, userMessage } = body;
+    const clientKey = req.headers.get("x-gemini-key") || body?.apiKey;
+    const apiKey = (clientKey && clientKey.trim()) || getStoredGeminiApiKey() || process.env.GEMINI_API_KEY;
 
     // IF GEMINI API KEY IS CONFIGURED
     if (apiKey && apiKey !== "your_gemini_api_key_here") {
@@ -126,8 +128,10 @@ export async function POST(req: Request) {
                 },
               },
             ]);
+            const replyText = followUp.response.text();
             return NextResponse.json({
-              reply: followUp.response.text(),
+              reply: replyText,
+              content: replyText,
               source: "gemini_ai",
             });
           } else if (call.name === "submit_order") {
@@ -175,16 +179,20 @@ export async function POST(req: Request) {
               },
             ]);
 
+            const replyText = followUp.response.text();
             return NextResponse.json({
-              reply: followUp.response.text(),
+              reply: replyText,
+              content: replyText,
               orderCreated: newOrder,
               source: "gemini_ai",
             });
           }
         }
 
+        const replyText = response.text();
         return NextResponse.json({
-          reply: response.text(),
+          reply: replyText,
+          content: replyText,
           source: "gemini_ai",
         });
       } catch (geminiError: any) {
@@ -193,7 +201,7 @@ export async function POST(req: Request) {
     }
 
     // SMART LOCAL FALLBACK (When API key not yet set or offline)
-    const lower = userMessage.toLowerCase();
+    const lower = (userMessage || "").toLowerCase();
     let reply = "";
 
     if (lower.includes("giá") || lower.includes("bao nhiêu") || lower.includes("tiền")) {
@@ -226,18 +234,21 @@ export async function POST(req: Request) {
         "5. Hoặc Ship COD / nhận hàng thanh toán tại shop ạ! ✨";
     } else {
       reply =
-        "Dạ em Bé Mầm đây ạ ~ 🌸 Tiệm Anna Decor tụi em chuyên hoa kẽm nhung uốn tay, hoa móc len vintage và hoa sáp thơm không tàn. Bạn cần tìm hoa tặng bạn bè, sinh nhật, tặng crush hay tự tay bó hoa, cứ nhắn Bé Mầm hỗ trợ liền nha! 💖";
+        "Dạ em Bé Mầm xin chào bạn ạ ~ 🌸 Tiệm hoa thủ công Anna Decor tụi em chuyên hoa kẽm nhung uốn tay, hoa móc len vintage và hoa sáp thơm vĩnh cửu. Bạn cần tìm hoa tặng bạn bè, sinh nhật, tặng crush hay tự tay bó hoa, cứ nhắn Bé Mầm hỗ trợ liền nha! 💖";
     }
 
     return NextResponse.json({
       reply,
+      content: reply,
       source: "local_rules",
     });
   } catch (error) {
     console.error("Chat API error:", error);
-    return NextResponse.json(
-      { reply: "Dạ Bé Mầm đang bận uốn cánh hoa xíu, bạn nhắn trực tiếp Zalo 0763.679.601 để tiệm hỗ trợ ngay nha! 🌸" },
-      { status: 500 }
-    );
+    const fallbackText = "Dạ Bé Mầm xin chào bạn nha ~ 🌸 Tiệm hoa Anna Decor sẵn sàng tư vấn hoa kẽm nhung & hoa len cho bạn ạ!";
+    return NextResponse.json({
+      reply: fallbackText,
+      content: fallbackText,
+      source: "fallback",
+    });
   }
 }

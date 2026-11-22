@@ -225,9 +225,9 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         if (data.bankConfig) setBankConfig(data.bankConfig);
-        if (data.settings) {
-          setHasGeminiKey(data.settings.hasGeminiApiKey);
-        }
+        const hasServerKey = Boolean(data.settings?.hasGeminiApiKey);
+        const hasLocalKey = typeof window !== "undefined" && Boolean(localStorage.getItem("anna_gemini_api_key"));
+        setHasGeminiKey(hasServerKey || hasLocalKey);
         if (data.vouchers) setVouchers(data.vouchers);
       }
     } catch (err) {
@@ -467,17 +467,21 @@ export default function AdminPage() {
   // Save Gemini API Key
   const handleSaveGeminiKey = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!geminiApiKeyInput.trim()) {
+    const key = geminiApiKeyInput.trim();
+    if (!key) {
       alert("Vui lòng nhập Gemini API Key");
       return;
     }
     sound.playPop();
     setIsSavingSettings(true);
     try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("anna_gemini_api_key", key);
+      }
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ geminiApiKey: geminiApiKeyInput.trim() }),
+        body: JSON.stringify({ geminiApiKey: key }),
       });
       const data = await res.json();
       if (data.success) {
@@ -499,16 +503,21 @@ export default function AdminPage() {
     setIsTestingAi(true);
     setTestAiResponse(null);
     try {
+      const storedKey = typeof window !== "undefined" ? localStorage.getItem("anna_gemini_api_key") || "" : "";
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-key": storedKey,
+        },
         body: JSON.stringify({
           messages: [],
           userMessage: "Chào Bé Mầm, shop mình có những mẫu hoa gì dưới 100k và giao toàn quốc không?",
+          apiKey: storedKey,
         }),
       });
       const data = await res.json();
-      setTestAiResponse(data.reply);
+      setTestAiResponse(data.reply || data.content || "Bé Mầm đã kết nối thành công! 🌸");
       sound.playSuccess();
     } catch {
       alert("Lỗi kiểm tra AI Gemini");

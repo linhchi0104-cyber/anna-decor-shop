@@ -65,12 +65,17 @@ export default function MascotChatbot({
     setIsLoading(true);
 
     try {
+      const storedKey = typeof window !== "undefined" ? localStorage.getItem("anna_gemini_api_key") || "" : "";
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-key": storedKey,
+        },
         body: JSON.stringify({
           messages: [...messages, userMsg],
           userMessage: textToSend,
+          apiKey: storedKey,
         }),
       });
 
@@ -80,7 +85,7 @@ export default function MascotChatbot({
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         role: "assistant",
-        content: data.content || "Bé Mầm xin lỗi, bạn nhắn lại giúp em nha! 🌸",
+        content: data.content || data.reply || "Bé Mầm xin chào bạn nha! Tiệm hoa Anna Decor sẵn sàng tư vấn hoa xinh cho bạn ạ 🌸",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         orderData: data.orderData,
       };
