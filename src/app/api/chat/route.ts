@@ -111,6 +111,32 @@ function cleanGeminiHistory(rawMessages: Array<{ role: string; content: string }
   return history.slice(-10);
 }
 
+// Dynamically discover valid models for the given API key from Google AI API
+async function discoverWorkingModels(apiKey: string): Promise<string[]> {
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.models)) {
+        const supported = data.models
+          .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+          .map((m: any) => m.name.replace(/^models\//, ""));
+
+        const lite = supported.filter((m: string) => m.includes("flash-lite"));
+        const flash = supported.filter((m: string) => m.includes("flash") && !m.includes("flash-lite"));
+        const others = supported.filter((m: string) => !m.includes("flash"));
+        return [...lite, ...flash, ...others];
+      }
+    } else {
+      const errJson = await res.json().catch(() => null);
+      console.warn("Google ListModels returned status:", res.status, errJson);
+    }
+  } catch (err) {
+    console.warn("Could not discover models via API:", err);
+  }
+  return [];
+}
+
 export async function POST(req: Request) {
   let lastErrorDetail = "";
   try {
@@ -129,8 +155,11 @@ export async function POST(req: Request) {
         const modelCandidates = Array.from(new Set([
           preferredModel,
           "gemini-2.0-flash-lite",
+          "gemini-2.0-flash",
           "gemini-2.5-flash-lite",
+          "gemini-2.5-flash",
           "gemini-1.5-flash",
+          "gemini-1.5-flash-latest",
         ]));
 
         // Build valid history strictly conforming to Google Gemini specification
@@ -176,11 +205,38 @@ export async function POST(req: Request) {
               break;
             } catch (noToolsErr: any) {
               console.warn(`Attempt with Gemini model "${candidate}" without tools also failed:`, noToolsErr?.message);
-              if (candidate === modelCandidates[modelCandidates.length - 1]) {
-                throw noToolsErr;
-              }
+              lastErrorDetail = noToolsErr?.message || String(noToolsErr);
             }
           }
+        }
+
+        // If none of the predefined models worked, try discovering active models directly from Google AI Studio
+        if (!response) {
+          const discovered = await discoverWorkingModels(apiKey);
+          console.log("Dynamically discovered models from Google API:", discovered);
+          for (const candidate of discovered) {
+            try {
+              const model = genAI.getGenerativeModel({
+                model: candidate,
+                systemInstruction: SYSTEM_PROMPT,
+              });
+              const currentChat = model.startChat({
+                history: chatHistory,
+              });
+              const result = await currentChat.sendMessage(userMessage);
+              chat = currentChat;
+              response = result.response;
+              activeModel = candidate;
+              break;
+            } catch (discErr: any) {
+              console.warn(`Attempt with discovered model "${candidate}" failed:`, discErr?.message);
+              lastErrorDetail = discErr?.message || String(discErr);
+            }
+          }
+        }
+
+        if (!response) {
+          throw new Error(lastErrorDetail || "All model attempts failed");
         }
 
         // Check if model called a function
