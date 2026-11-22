@@ -99,6 +99,7 @@ export default function AdminPage() {
 
   // Settings & Gemini API Key State
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState("");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash-lite");
   const [hasGeminiKey, setHasGeminiKey] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [testAiResponse, setTestAiResponse] = useState<string | null>(null);
@@ -228,6 +229,9 @@ export default function AdminPage() {
         const hasServerKey = Boolean(data.settings?.hasGeminiApiKey);
         const hasLocalKey = typeof window !== "undefined" && Boolean(localStorage.getItem("anna_gemini_api_key"));
         setHasGeminiKey(hasServerKey || hasLocalKey);
+        if (data.settings?.geminiModel) {
+          setGeminiModel(data.settings.geminiModel);
+        }
         if (data.vouchers) setVouchers(data.vouchers);
       }
     } catch (err) {
@@ -1678,12 +1682,12 @@ export default function AdminPage() {
                   Cấu Hình AI Gemini Cho Bé Mầm
                 </h3>
                 <p className="text-xs text-pastel-subtext">
-                  Tích hợp Google Generative AI (Gemini 1.5 Flash) để tư vấn hoa và chốt đơn thông minh
+                  Tích hợp Google Generative AI (Gemini 3.6 / Flash Lite) cấu hình qua .env để tư vấn hoa và chốt đơn siêu tốc
                 </p>
               </div>
             </div>
 
-            <div className="p-4 rounded-3xl bg-pastel-warmBg border border-pastel-pink/40 space-y-2 text-xs text-pastel-choco">
+            <div className="p-4 rounded-3xl bg-pastel-warmBg border border-pastel-pink/40 space-y-2.5 text-xs text-pastel-choco">
               <div className="flex items-center justify-between">
                 <span className="font-bold">Trạng thái kết nối API:</span>
                 <span
@@ -1696,8 +1700,14 @@ export default function AdminPage() {
                   {hasGeminiKey ? "✅ Đã Kích Hoạt Gemini AI" : "⚠️ Đang Dùng Quy Tắc Mặc Định"}
                 </span>
               </div>
+              <div className="flex items-center justify-between pt-1 border-t border-pastel-pink/20">
+                <span className="font-bold">Mô hình AI (.env):</span>
+                <span className="px-3 py-1 rounded-full text-[11px] font-black bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1">
+                  ⚡ {geminiModel} (Flash Lite)
+                </span>
+              </div>
               <p className="text-pastel-subtext text-[11px]">
-                Khi nhập API Key, Chatbot Bé Mầm sẽ được trang bị trí tuệ nhân tạo Gemini để trả lời mượt mà, hiểu ngữ cảnh khách hàng và tự động tạo đơn.
+                Mô hình được tải trực tiếp từ mã cấu hình <code>GEMINI_MODEL</code> trong <code>.env</code>. Chatbot Bé Mầm sẽ phản hồi nhanh vượt trội, thấu hiểu ngữ cảnh khách hàng và tự động tạo đơn.
               </p>
             </div>
 

@@ -19,6 +19,7 @@ export async function GET() {
     settings: {
       hasGeminiApiKey: Boolean(settings.geminiApiKey || process.env.GEMINI_API_KEY),
       geminiApiKey: settings.geminiApiKey ? `${settings.geminiApiKey.slice(0, 8)}...` : "",
+      geminiModel: settings.geminiModel || process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
       shopOpen: settings.shopOpen ?? true,
     },
     vouchers,
@@ -36,10 +37,11 @@ export async function POST(req: Request) {
       updateStoredBankConfig(body);
     }
 
-    // 2. Gemini API Key or Shop Settings
-    if (body.geminiApiKey !== undefined || body.shopOpen !== undefined) {
+    // 2. Gemini API Key, Model or Shop Settings
+    if (body.geminiApiKey !== undefined || body.geminiModel !== undefined || body.shopOpen !== undefined) {
       updateStoredSettings({
         geminiApiKey: body.geminiApiKey,
+        geminiModel: body.geminiModel,
         shopOpen: body.shopOpen,
       });
     }
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
       settings: {
         hasGeminiApiKey: Boolean(settings.geminiApiKey || process.env.GEMINI_API_KEY),
         geminiApiKey: settings.geminiApiKey ? `${settings.geminiApiKey.slice(0, 8)}...` : "",
+        geminiModel: settings.geminiModel || process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
         shopOpen: settings.shopOpen ?? true,
       },
       vouchers,

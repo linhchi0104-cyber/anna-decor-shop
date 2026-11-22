@@ -3,6 +3,7 @@ import { INITIAL_PRODUCTS, DEFAULT_BANK_CONFIG } from "./products";
 
 export interface AppSettings {
   geminiApiKey?: string;
+  geminiModel?: string;
   shopOpen?: boolean;
 }
 
@@ -82,6 +83,7 @@ export function getStoredSettings(): AppSettings {
   if (!global.__annaSettings) {
     global.__annaSettings = {
       geminiApiKey: process.env.GEMINI_API_KEY || "",
+      geminiModel: process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
       shopOpen: true,
     };
   }
@@ -97,6 +99,11 @@ export function updateStoredSettings(updates: Partial<AppSettings>): AppSettings
 export function getStoredGeminiApiKey(): string {
   const settings = getStoredSettings();
   return settings.geminiApiKey || process.env.GEMINI_API_KEY || "";
+}
+
+export function getStoredGeminiModel(): string {
+  const settings = getStoredSettings();
+  return settings.geminiModel || process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
 }
 
 export function getStoredVouchers(): Voucher[] {

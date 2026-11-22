@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { PRODUCTS, SHOP_INFO } from "@/data/products";
-import { getStoredGeminiApiKey, getStoredProducts } from "@/data/productsStore";
+import { getStoredGeminiApiKey, getStoredGeminiModel, getStoredProducts } from "@/data/productsStore";
 import { addOrder } from "@/data/ordersStore";
 import { sendTelegramNotification } from "@/utils/telegram";
 import { Order } from "@/types";
@@ -91,12 +91,15 @@ export async function POST(req: Request) {
     if (apiKey && apiKey !== "your_gemini_api_key_here") {
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Using gemini-1.5-flash for super fast and responsive chat
-        const model = genAI.getGenerativeModel({
-          model: "gemini-1.5-flash",
-          systemInstruction: SYSTEM_PROMPT,
-          tools: flowerTools as any,
-        });
+        
+        // Configurable Gemini Model via .env (GEMINI_MODEL) or request body
+        const preferredModel = (body?.model || process.env.GEMINI_MODEL || getStoredGeminiModel() || "gemini-2.0-flash-lite").trim();
+        const modelCandidates = Array.from(new Set([
+          preferredModel,
+          "gemini-2.0-flash-lite",
+          "gemini-2.5-flash-lite",
+          "gemini-1.5-flash",
+        ]));
 
         // Build history
         const chatHistory = (messages || []).slice(-8).map((m: { role: string; content: string }) => ({
@@ -104,12 +107,34 @@ export async function POST(req: Request) {
           parts: [{ text: m.content }],
         }));
 
-        const chat = model.startChat({
-          history: chatHistory,
-        });
+        let chat: any = null;
+        let response: any = null;
+        let activeModel = preferredModel;
 
-        const result = await chat.sendMessage(userMessage);
-        const response = result.response;
+        for (const candidate of modelCandidates) {
+          try {
+            const model = genAI.getGenerativeModel({
+              model: candidate,
+              systemInstruction: SYSTEM_PROMPT,
+              tools: flowerTools as any,
+            });
+
+            const currentChat = model.startChat({
+              history: chatHistory,
+            });
+
+            const result = await currentChat.sendMessage(userMessage);
+            chat = currentChat;
+            response = result.response;
+            activeModel = candidate;
+            break;
+          } catch (candErr: any) {
+            console.warn(`Attempt with Gemini model "${candidate}" failed:`, candErr?.message);
+            if (candidate === modelCandidates[modelCandidates.length - 1]) {
+              throw candErr;
+            }
+          }
+        }
 
         // Check if model called a function
         const functionCalls = response.functionCalls();
@@ -132,7 +157,8 @@ export async function POST(req: Request) {
             return NextResponse.json({
               reply: replyText,
               content: replyText,
-              source: "gemini_ai",
+              source: `gemini_ai (${activeModel})`,
+              model: activeModel,
             });
           } else if (call.name === "submit_order") {
             const args = call.args as any;
@@ -184,7 +210,8 @@ export async function POST(req: Request) {
               reply: replyText,
               content: replyText,
               orderCreated: newOrder,
-              source: "gemini_ai",
+              source: `gemini_ai (${activeModel})`,
+              model: activeModel,
             });
           }
         }
@@ -193,7 +220,8 @@ export async function POST(req: Request) {
         return NextResponse.json({
           reply: replyText,
           content: replyText,
-          source: "gemini_ai",
+          source: `gemini_ai (${activeModel})`,
+          model: activeModel,
         });
       } catch (geminiError: any) {
         console.warn("Gemini API call failed, falling back to smart local rules:", geminiError?.message);
